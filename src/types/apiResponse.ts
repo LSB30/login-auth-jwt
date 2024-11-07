@@ -8,7 +8,7 @@ export interface ApiResponse<T = any> {
   
   // Tipo para os dados do usuário
   export interface UserData {
-    id: number;
+    id: string;
     email: string;
     createdAt: Date;
     updatedAt: Date;

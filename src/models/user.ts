@@ -1,4 +1,3 @@
-import { UUID } from "crypto";
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -8,10 +7,10 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 
-@Entity()
+@Entity({ name: "users" })
 export class User extends BaseEntity {
-  @PrimaryGeneratedColumn()
-  id: UUID;
+  @PrimaryGeneratedColumn(`uuid`)
+  id: string;
 
   @Column({ unique: true })
   email: string;
