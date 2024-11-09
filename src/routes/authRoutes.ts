@@ -1,24 +1,12 @@
-import { Router, Request, Response } from 'express';
-import { register, login } from '../controllers/authController';
-import { validateRegister, validateLogin } from '../middlewares/validationMiddleware';
+import { Router } from "express";
+import { AuthController } from "../controllers/authController";
+import { AuthService } from "../services/authService";
 
 const router = Router();
+const authService = new AuthService();
+const authController = new AuthController(authService);
 
-// Tipando explicitamente as rotas
-router.post(
-  '/register',
-  validateRegister,
-  async (req: Request, res: Response) => {
-    await register(req, res);
-  }
-);
-
-router.post(
-  '/login',
-  validateLogin,
-  async (req: Request, res: Response) => {
-    await login(req, res);
-  }
-);
+router.post("/register", (req, res) => authController.register(req, res));
+router.post("/login", (req, res) => authController.login(req, res));
 
 export default router;

@@ -1,13 +1,13 @@
 import { Request, Response } from "express";
-import { User } from "../models/user";
-import { AppDataSource } from "../utils/db";
-import { comparePasswords, generateToken, hashPassword } from "../services/authService";
-import { ApiResponse, AuthResponse } from "../types/apiResponse";
+import { AuthService } from "../services/authService";
 import { ZodError } from "zod";
+import { ApiResponse, AuthResponse } from "../types/apiResponse";
 
-const userRepository = AppDataSource.getRepository(User);
+// Interface para erros customizados
+interface CustomError extends Error {
+  message: string;
+}
 
-// Interfaces para tipar o body das requisições
 interface RegisterRequest {
   email: string;
   password: string;
@@ -18,99 +18,94 @@ interface LoginRequest {
   password: string;
 }
 
-export const register = async (
-  req: Request<{}, {}, RegisterRequest>,
-  res: Response
-): Promise<void> => {
-  try {
-    const { email, password } = req.body;
+export class AuthController {
+  constructor(private authService: AuthService) {}
 
-    const existingUser = await userRepository.findOne({ where: { email } });
+  async register(
+    req: Request<{}, {}, RegisterRequest>,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { email, password } = req.body;
+      const result = await this.authService.register(email, password);
+      
+      res.status(201).json({
+        success: true,
+        message: "Usuário criado com sucesso",
+        data: result,
+      } as ApiResponse<AuthResponse>);
+    } catch (error: unknown) {
+      // Tratamento tipado dos erros
+      if (error instanceof ZodError) {
+        res.status(400).json({
+          success: false,
+          error: "Dados inválidos",
+          details: error.errors,
+        });
+        return;
+      }
 
-    if (existingUser) {
-      res.status(400).json({ error: "Email já está em uso" });
-      return;
-    }
+      // Type guard para verificar se é um erro customizado
+      if (this.isCustomError(error) && error.message === "EMAIL_IN_USE") {
+        res.status(400).json({
+          success: false,
+          error: "Email já está em uso"
+        });
+        return;
+      }
 
-    const hashedPassword = await hashPassword(password);
-
-    const user = userRepository.create({
-      email,
-      password: hashedPassword,
-    });
-
-    await userRepository.save(user);
-    const token = generateToken(user.id);
-
-    res.status(201).json({
-      success: true,
-      message: "Usuário criado com sucesso",
-      data: {
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-        },
-      },
-    } as ApiResponse<AuthResponse>);
-  } catch (error) {
-    if (error instanceof ZodError) {
-      res.status(400).json({
+      console.error("Erro ao registrar usuário:", error);
+      res.status(500).json({
         success: false,
-        error: "Dados inválidos",
-        details: error.errors,
+        error: "Erro interno do servidor",
       });
-      return;
     }
-
-    console.error("Erro ao registrar usuário:", error);
-    res.status(500).json({
-      success: false,
-      error: "Erro interno do servidor",
-    });
   }
-};
 
-export const login = async (
-  req: Request<{}, {}, LoginRequest>,
-  res: Response
-): Promise<void> => {
-  try {
-    const { email, password } = req.body;
+  async login(
+    req: Request<{}, {}, LoginRequest>,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { email, password } = req.body;
+      const result = await this.authService.login(email, password);
 
-    const user = await userRepository.findOne({ where: { email } });
-
-    if (!user || !(await comparePasswords(password, user.password))) {
-      res.status(401).json({
-        success: false,
-        error: "Email ou senha inválidos",
+      res.status(200).json({
+        success: true,
+        message: "Login realizado com sucesso",
+        data: result,
       });
-      return;
-    }
+    } catch (error: unknown) {
+      if (error instanceof ZodError) {
+        res.status(400).json({
+          success: false,
+          error: "Dados inválidos",
+          details: error.errors,
+        });
+        return;
+      }
 
-    const token = generateToken(user.id);
+      if (this.isCustomError(error) && error.message === "INVALID_CREDENTIALS") {
+        res.status(401).json({
+          success: false,
+          error: "Email ou senha inválidos",
+        });
+        return;
+      }
 
-    res.status(200).json({
-      success: true,
-      message: "Login realizado com sucesso",
-      data: { token, user: { id: user.id, email: user.email } },
-    });
-  } catch (error) {
-    if (error instanceof ZodError) {
-      res.status(400).json({
+      console.error("Erro ao fazer login:", error);
+      res.status(500).json({
         success: false,
-        error: "Dados inválidos",
-        details: error.errors,
+        error: "Erro interno do servidor",
       });
-      return;
     }
-
-    console.error("Erro ao fazer login:", error);
-    res.status(500).json({
-      success: false,
-      error: "Erro interno do servidor",
-    });
   }
-};
+
+  // Type guard para verificar se o erro é do tipo CustomError
+  private isCustomError(error: unknown): error is CustomError {
+    return (
+      error instanceof Error &&
+      'message' in error
+    );
+  }
+}

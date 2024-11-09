@@ -1,20 +1,57 @@
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import { User } from "../models/user";
+import { AppDataSource } from "../utils/db";
+import { comparePasswords, generateToken, hashPassword } from "../utils/auth";
+import { AuthResponse, UserData } from "../types/apiResponse";
 
-export const generateToken = (userId: string) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET!, {
-    expiresIn: '1h',
-  });
-};
+export class AuthService {
+  private userRepository = AppDataSource.getRepository(User);
 
-export const hashPassword = async (password: string): Promise<string> => {
-  const saltRounds = 10;
-  return bcrypt.hash(password, saltRounds);
-};
+  async register(email: string, password: string): Promise<AuthResponse> {
+    const existingUser = await this.userRepository.findOne({ where: { email } });
 
-export const comparePasswords = async (
-  password: string, 
-  hashedPassword: string
-): Promise<boolean> => {
-  return bcrypt.compare(password, hashedPassword);
-};
+    if (existingUser) {
+      throw new Error("EMAIL_IN_USE");
+    }
+
+    const hashedPassword = await hashPassword(password);
+
+    const user = this.userRepository.create({
+      email,
+      password: hashedPassword,
+    });
+
+    await this.userRepository.save(user);
+    // Convertendo o ID para string antes de passar para o generateToken
+    const token = generateToken(user.id);
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    };
+  }
+
+  async login(email: string, password: string): Promise<AuthResponse> {
+    const user = await this.userRepository.findOne({ where: { email } });
+
+    if (!user || !(await comparePasswords(password, user.password))) {
+      throw new Error("INVALID_CREDENTIALS");
+    }
+
+    const token = generateToken(user.id);
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    };
+  }
+}
